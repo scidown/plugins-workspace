@@ -99,7 +99,7 @@ pub struct PluginConfig {
     preload: Vec<String>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MigrationKind {
     Up,
     Down,
@@ -115,7 +115,7 @@ impl From<MigrationKind> for MigrationType {
 }
 
 /// A migration definition.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Migration {
     pub version: i64,
     pub description: &'static str,
@@ -123,7 +123,7 @@ pub struct Migration {
     pub kind: MigrationKind,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct MigrationList(Vec<Migration>);
 
 impl MigrationSource<'static> for MigrationList {
@@ -165,9 +165,18 @@ async fn load<R: Runtime>(
     }
     let pool = Pool::connect(&fqdb).await?;
 
-    if let Some(migrations) = migrations.0.lock().await.remove(&db) {
-        let migrator = Migrator::new(migrations).await?;
-        migrator.run(&pool).await?;
+    let mut migration_map = migrations.0.lock().await;
+    let patterns: Vec<_> = (&migration_map)
+        .keys()
+        .filter(|key| glob::Pattern::new(&key).unwrap().matches(&db))
+        .cloned()
+        .collect();
+
+    for pattern in patterns {
+        if let Some(migrations) = migration_map.get(&pattern) {
+            let migrator = Migrator::new(migrations.to_owned()).await?;
+            migrator.run(&pool).await?;
+        }
     }
 
     db_instances.0.lock().await.insert(db.clone(), pool);

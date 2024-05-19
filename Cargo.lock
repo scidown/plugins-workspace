@@ -4921,6 +4921,7 @@ name = "tauri-plugin-sql"
 version = "0.0.0"
 dependencies = [
  "futures-core",
+ "glob",
  "log",
  "serde",
  "serde_json",
